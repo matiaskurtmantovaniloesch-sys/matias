@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adega - Sistema de Precificação de Vinhos</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand">
+            <span class="logo">&#127863;</span>
+            <div>
+                <h1>Adega</h1>
+                <p class="subtitle">Sistema de Precificação de Vinhos</p>
+            </div>
+        </div>
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="produtos">Produtos</button>
+            <button class="tab-btn" data-tab="precificacao">Montar Precificação</button>
+            <button class="tab-btn" data-tab="relatorio">Relatório / PDF</button>
+        </nav>
+    </header>
+
+    <main>
+        <!-- ABA PRODUTOS -->
+        <section id="tab-produtos" class="tab-content active">
+            <div class="card">
+                <h2>Importar Planilha Excel</h2>
+                <p class="hint">
+                    Carregue um arquivo <strong>.xlsx</strong> ou <strong>.xls</strong> com colunas: <em>Nome</em>, <em>Quantidade</em>, <em>Preço</em>.
+                    Aceita variações de cabeçalho (ex: "Produto", "Qtd", "Valor").
+                </p>
+                <div class="import-row">
+                    <label class="file-label" for="file-input">
+                        <span>Selecionar arquivo</span>
+                        <input type="file" id="file-input" accept=".xlsx,.xls,.csv" />
+                    </label>
+                    <span id="file-name" class="file-name"></span>
+                    <button id="btn-template" class="btn secondary">Baixar modelo</button>
+                    <button id="btn-clear-all" class="btn danger">Limpar tudo</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>Cadastro de Produtos</h2>
+                    <div class="search-row">
+                        <input type="text" id="search-input" placeholder="Buscar produto por nome..." />
+                        <button id="btn-add" class="btn primary">+ Novo produto</button>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table id="table-produtos">
+                        <thead>
+                            <tr>
+                                <th>Nome do Produto</th>
+                                <th class="num">Quantidade</th>
+                                <th class="num">Preço Unitário (R$)</th>
+                                <th class="actions">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-produtos"></tbody>
+                    </table>
+                    <p id="empty-produtos" class="empty">Nenhum produto cadastrado ainda. Importe um Excel ou clique em "+ Novo produto".</p>
+                </div>
+                <div class="summary">Total de produtos: <strong id="count-produtos">0</strong></div>
+            </div>
+        </section>
+
+        <!-- ABA PRECIFICAÇÃO -->
+        <section id="tab-precificacao" class="tab-content">
+            <div class="card">
+                <h2>Dados do Cliente</h2>
+                <div class="form-row">
+                    <label>
+                        Nome do cliente
+                        <input type="text" id="cliente-nome" placeholder="Ex: João Silva" />
+                    </label>
+                    <label>
+                        Data
+                        <input type="date" id="cliente-data" />
+                    </label>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>Selecionar Produtos</h2>
+                    <input type="text" id="search-precif" placeholder="Buscar produto..." />
+                </div>
+                <div class="table-wrap">
+                    <table id="table-precif">
+                        <thead>
+                            <tr>
+                                <th class="check"><input type="checkbox" id="check-all" title="Selecionar todos"/></th>
+                                <th>Produto</th>
+                                <th class="num">Estoque</th>
+                                <th class="num">Preço Unit.</th>
+                                <th class="num">Qtd. para venda</th>
+                                <th class="num">Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-precif"></tbody>
+                    </table>
+                    <p id="empty-precif" class="empty">Nenhum produto cadastrado. Vá até a aba Produtos primeiro.</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Resumo Financeiro</h2>
+                <div class="finance-grid">
+                    <div class="finance-box">
+                        <label>Subtotal</label>
+                        <div id="fin-subtotal" class="finance-val">R$ 0,00</div>
+                    </div>
+                    <div class="finance-box">
+                        <label>
+                            Desconto
+                            <select id="desconto-tipo">
+                                <option value="percent">%</option>
+                                <option value="real">R$</option>
+                            </select>
+                        </label>
+                        <input type="number" id="desconto-valor" value="0" min="0" step="0.01" />
+                    </div>
+                    <div class="finance-box total">
+                        <label>Total</label>
+                        <div id="fin-total" class="finance-val">R$ 0,00</div>
+                    </div>
+                </div>
+
+                <h3>Forma de Pagamento</h3>
+                <div class="pagamento">
+                    <label class="radio">
+                        <input type="radio" name="pagamento" value="vista" checked />
+                        <span>À vista</span>
+                    </label>
+                    <label class="radio">
+                        <input type="radio" name="pagamento" value="parcelado" />
+                        <span>Parcelado</span>
+                    </label>
+                    <div id="parcelas-box" class="parcelas-box hidden">
+                        <label>
+                            Nº de parcelas
+                            <input type="number" id="num-parcelas" value="2" min="2" max="24" />
+                        </label>
+                        <label>
+                            Juros ao mês (%)
+                            <input type="number" id="juros-mes" value="0" min="0" step="0.01" />
+                        </label>
+                        <div class="parcela-info">
+                            <span>Valor da parcela:</span>
+                            <strong id="valor-parcela">R$ 0,00</strong>
+                        </div>
+                        <div class="parcela-info">
+                            <span>Total parcelado:</span>
+                            <strong id="total-parcelado">R$ 0,00</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ABA RELATÓRIO -->
+        <section id="tab-relatorio" class="tab-content">
+            <div class="card">
+                <h2>Pré-visualização do Relatório</h2>
+                <div id="report-preview" class="report-preview">
+                    <p class="empty">Monte uma precificação na aba anterior para visualizar o relatório.</p>
+                </div>
+                <div class="actions-row">
+                    <button id="btn-gerar-pdf" class="btn primary big">Gerar PDF</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal de edição/novo produto -->
+    <div id="modal" class="modal hidden">
+        <div class="modal-content">
+            <h3 id="modal-title">Novo Produto</h3>
+            <label>
+                Nome
+                <input type="text" id="modal-nome" />
+            </label>
+            <label>
+                Quantidade em estoque
+                <input type="number" id="modal-qtd" min="0" step="1" />
+            </label>
+            <label>
+                Preço unitário (R$)
+                <input type="number" id="modal-preco" min="0" step="0.01" />
+            </label>
+            <div class="modal-actions">
+                <button id="modal-cancel" class="btn secondary">Cancelar</button>
+                <button id="modal-save" class="btn primary">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
