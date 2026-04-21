@@ -434,7 +434,7 @@ function renderReport() {
            <div class="line"><span>Total parcelado:</span><span>${formatBRL(totalParcelado)}</span></div>`;
 
     el.innerHTML = `
-        <h3>Relatório de Precificação</h3>
+        <h3>Precificação</h3>
         <p><strong>Cliente:</strong> ${escapeHTML(state.cliente.nome) || '—'}</p>
         <p><strong>Data:</strong> ${formatDataBR(state.cliente.data) || '—'}</p>
         <table class="report-table">
@@ -494,7 +494,7 @@ document.getElementById('btn-gerar-pdf').addEventListener('click', () => {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(20);
     doc.setFont('helvetica', 'bold');
-    doc.text('Adega - Relatório de Precificação', 14, 18);
+    doc.text('MYWINE - Precificação', 14, 18);
 
     doc.setTextColor(43, 26, 31);
     doc.setFontSize(11);
@@ -516,9 +516,10 @@ document.getElementById('btn-gerar-pdf').addEventListener('click', () => {
         headStyles: { fillColor: [122, 22, 40], textColor: 255, fontStyle: 'bold' },
         alternateRowStyles: { fillColor: [250, 245, 246] },
         columnStyles: {
-            1: { halign: 'right' },
-            2: { halign: 'right' },
-            3: { halign: 'right' },
+            0: { cellWidth: 90 },
+            1: { halign: 'right', cellWidth: 18 },
+            2: { halign: 'right', cellWidth: 40, overflow: 'hidden' },
+            3: { halign: 'right', cellWidth: 40, overflow: 'hidden' },
         },
         margin: { left: 14, right: 14 },
     });
