@@ -30,7 +30,7 @@ popup (UI, 4 telas)
   │                             ├─ cache 24h por domínio
   │                             ├─ fila p/ rate limit
   │                             ├─ Groq API (retry 2x + backoff,
-  │                             │  fallback mixtral-8x7b-32768)
+  │                             │  fallback llama-3.1-8b-instant)
   │                             └─ histórico (10 análises)
   └─ report/report.html ◄────── renderiza JSON + exporta PDF
 ```
@@ -42,8 +42,8 @@ popup (UI, 4 telas)
   coleta o que conseguir e reporta limitações.
 - **IA** (`background/service-worker.js` + `config/groq-config.js`): prompt
   estruturado que exige relatório JSON completo, com timeout de 60s, 2
-  retries com backoff exponencial (2s/4s) e re-parse tolerante de JSON
-  (cercas de código, vírgulas penduradas).
+  retries com backoff exponencial (2s/4s), fallback `llama-3.1-8b-instant`
+  e re-parse tolerante de JSON (cercas de código, vírgulas penduradas).
 - **Cache**: análises ficam válidas por 24h por domínio; o popup oferece
   "Forçar nova análise".
 - **Relatório** (`report/`): página dark-mode com scores, E-E-A-T, planos de

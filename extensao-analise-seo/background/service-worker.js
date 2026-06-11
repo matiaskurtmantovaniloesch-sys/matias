@@ -122,15 +122,15 @@ async function chamarGroq(apiKey, prompt, modelo) {
 }
 
 async function analisarComRetry(apiKey, prompt) {
+  let erroPrincipal = null;   // erro do modelo principal (mais informativo)
   let ultimoErro = null;
   for (let tentativa = 0; tentativa < GROQ_CONFIG.tentativas; tentativa++) {
     if (tentativa > 0) {
       await new Promise((r) => setTimeout(r, GROQ_CONFIG.backoffBaseMs * Math.pow(2, tentativa - 1)));
     }
     // Última tentativa usa o modelo de fallback
-    const modelo = tentativa === GROQ_CONFIG.tentativas - 1
-      ? GROQ_CONFIG.modeloFallback
-      : GROQ_CONFIG.modelo;
+    const ehFallback = tentativa === GROQ_CONFIG.tentativas - 1;
+    const modelo = ehFallback ? GROQ_CONFIG.modeloFallback : GROQ_CONFIG.modelo;
     try {
       const conteudo = await chamarGroq(apiKey, prompt, modelo);
       const relatorio = parsearJSONRelatorio(conteudo);
@@ -140,8 +140,11 @@ async function analisarComRetry(apiKey, prompt) {
       if (e.fatal) throw e;
       ultimoErro = e.name === 'AbortError' ? new Error('Timeout na chamada à API Groq.') : e;
     }
+    if (!ehFallback) erroPrincipal = ultimoErro;
   }
-  throw ultimoErro || new Error('Falha desconhecida na análise.');
+  // Se o fallback falhou por motivo próprio (ex.: modelo indisponível),
+  // reporta o erro do modelo principal, que é a causa real.
+  throw erroPrincipal || ultimoErro || new Error('Falha desconhecida na análise.');
 }
 
 // ------------------------------------------------------------------

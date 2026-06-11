@@ -6,9 +6,11 @@
 const GROQ_CONFIG = {
   endpoint: 'https://api.groq.com/openai/v1/chat/completions',
   modelo: 'llama-3.3-70b-versatile',
-  modeloFallback: 'mixtral-8x7b-32768',
+  modeloFallback: 'llama-3.1-8b-instant',
   temperatura: 0.3,
-  maxTokens: 8000,
+  // O relatório completo é longo; com limite baixo a resposta é truncada e
+  // o modo json_object da Groq rejeita com HTTP 400 (json_validate_failed).
+  maxTokens: 16384,
   timeoutMs: 60000,
   tentativas: 3,           // 1 chamada + 2 retries com backoff
   backoffBaseMs: 2000,
