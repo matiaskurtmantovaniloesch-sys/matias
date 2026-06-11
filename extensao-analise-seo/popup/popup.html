@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>SiteAnalyzer Pro</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="header">
+    <img src="../icons/icon48.png" alt="" class="logo">
+    <div>
+      <h1>SiteAnalyzer Pro</h1>
+      <span class="subtitulo">SEO · GEO · AEO · Frontend</span>
+    </div>
+  </header>
+
+  <!-- ============ TELA 1: CONFIGURAÇÃO ============ -->
+  <section id="tela-config" class="tela oculta">
+    <h2>Configuração inicial</h2>
+    <p class="texto-secundario">
+      Insira sua API Key da Groq para ativar a análise com IA.
+    </p>
+    <label class="campo">
+      <span>Groq API Key</span>
+      <input type="password" id="input-apikey" placeholder="gsk_..." autocomplete="off">
+    </label>
+    <button id="btn-salvar-key" class="btn btn-primario">Salvar e Continuar</button>
+    <a href="https://console.groq.com/keys" target="_blank" rel="noopener" class="link">
+      Obter uma API Key gratuita →
+    </a>
+    <p class="aviso-privacidade">
+      🔒 Aviso de privacidade: os dados da página analisada (textos, metadados e
+      estrutura) são enviados à API da Groq para processamento pela IA.
+    </p>
+  </section>
+
+  <!-- ============ TELA 2: DASHBOARD ============ -->
+  <section id="tela-dashboard" class="tela oculta">
+    <div class="site-atual">
+      <span class="rotulo">Site atual</span>
+      <span id="site-url" class="valor">—</span>
+    </div>
+
+    <div class="score-geral-wrap">
+      <div class="score-circulo score-grande" id="score-geral-circulo">
+        <svg viewBox="0 0 120 120">
+          <circle class="trilha" cx="60" cy="60" r="52"/>
+          <circle class="progresso" cx="60" cy="60" r="52" id="score-geral-arco"/>
+        </svg>
+        <div class="score-texto">
+          <strong id="score-geral-valor">—</strong>
+          <small>Score Geral</small>
+        </div>
+      </div>
+    </div>
+
+    <div class="cards-scores">
+      <div class="card-score" data-cat="seo"><span class="card-nome">SEO</span><span class="card-valor" id="card-seo">—</span></div>
+      <div class="card-score" data-cat="geo"><span class="card-nome">GEO</span><span class="card-valor" id="card-geo">—</span></div>
+      <div class="card-score" data-cat="aeo"><span class="card-nome">AEO</span><span class="card-valor" id="card-aeo">—</span></div>
+      <div class="card-score" data-cat="frontend"><span class="card-nome">Frontend</span><span class="card-valor" id="card-frontend">—</span></div>
+    </div>
+
+    <p id="nicho-status" class="nicho oculta"></p>
+    <p id="aviso-cache" class="aviso-cache oculta">
+      Análise em cache (últimas 24h).
+      <button id="btn-forcar" class="btn-link">Forçar nova análise</button>
+    </p>
+
+    <button id="btn-analisar" class="btn btn-analisar">🔍 Analisar Este Site</button>
+    <div class="linha-botoes">
+      <button id="btn-relatorio" class="btn btn-secundario" disabled>📑 Relatório completo</button>
+      <button id="btn-pdf" class="btn btn-secundario" disabled>📄 Gerar PDF</button>
+    </div>
+
+    <p id="erro-dashboard" class="erro oculta"></p>
+
+    <div class="historico">
+      <h3>Últimas análises</h3>
+      <ul id="lista-historico"><li class="texto-secundario">Nenhuma análise ainda.</li></ul>
+    </div>
+  </section>
+
+  <!-- ============ TELA 3: PROGRESSO ============ -->
+  <section id="tela-progresso" class="tela oculta">
+    <h2>Analisando…</h2>
+    <div class="barra-wrap"><div class="barra" id="barra-progresso"></div></div>
+    <ol class="steps">
+      <li id="step-1">Coletando dados da página</li>
+      <li id="step-2">Analisando com IA (Groq)</li>
+      <li id="step-3">Processando resultados</li>
+      <li id="step-4">Concluído</li>
+    </ol>
+    <p class="texto-secundario centro" id="estimativa">Tempo estimado: 10–30 segundos</p>
+  </section>
+
+  <!-- ============ TELA 4: RESULTADO ============ -->
+  <section id="tela-resultado" class="tela oculta">
+    <h2 id="resultado-titulo">Resultado da análise</h2>
+    <p id="resultado-nicho" class="nicho"></p>
+
+    <div class="cards-scores">
+      <div class="card-score" data-cat="seo"><span class="card-nome">SEO</span><span class="card-valor" id="res-seo">—</span></div>
+      <div class="card-score" data-cat="geo"><span class="card-nome">GEO</span><span class="card-valor" id="res-geo">—</span></div>
+      <div class="card-score" data-cat="aeo"><span class="card-nome">AEO</span><span class="card-valor" id="res-aeo">—</span></div>
+      <div class="card-score" data-cat="frontend"><span class="card-nome">Frontend</span><span class="card-valor" id="res-frontend">—</span></div>
+    </div>
+
+    <div class="bloco">
+      <h3>Resumo executivo</h3>
+      <p id="resumo-executivo" class="texto-secundario"></p>
+    </div>
+
+    <div class="bloco">
+      <h3>⚠️ Top problemas críticos</h3>
+      <ul id="lista-problemas"></ul>
+    </div>
+
+    <div class="bloco">
+      <h3>💡 Top oportunidades</h3>
+      <ul id="lista-oportunidades"></ul>
+    </div>
+
+    <div class="linha-botoes">
+      <button id="btn-ver-relatorio" class="btn btn-primario">Ver relatório completo</button>
+      <button id="btn-pdf-resultado" class="btn btn-secundario">📄 Gerar PDF</button>
+    </div>
+    <button id="btn-voltar" class="btn-link centro">← Voltar ao dashboard</button>
+  </section>
+
+  <footer class="rodape">
+    <span id="versao">v—</span>
+    <span>·</span>
+    <span>Dados enviados à API Groq</span>
+  </footer>
+
+  <script src="../config/groq-config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

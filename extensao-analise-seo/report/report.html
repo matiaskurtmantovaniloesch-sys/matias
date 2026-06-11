@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Relatório — SiteAnalyzer Pro</title>
+  <style>
+    :root {
+      --bg-primary: #0f1117;
+      --bg-secondary: #1a1d27;
+      --bg-card: #21253a;
+      --accent-primary: #6366f1;
+      --accent-seo: #10b981;
+      --accent-geo: #f59e0b;
+      --accent-aeo: #8b5cf6;
+      --accent-frontend: #3b82f6;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --border: #2d3148;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    #relatorio { max-width: 960px; margin: 0 auto; padding: 32px 28px 80px; }
+
+    /* Botão fixo de exportação */
+    #btn-exportar-pdf {
+      position: fixed; top: 18px; right: 18px; z-index: 99;
+      padding: 11px 18px; border: none; border-radius: 10px;
+      background: var(--accent-primary); color: #fff;
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+    }
+    #btn-exportar-pdf:hover { filter: brightness(1.12); }
+    #btn-exportar-pdf:disabled { opacity: 0.6; cursor: wait; }
+
+    /* Header */
+    .cabecalho {
+      display: flex; align-items: center; gap: 16px;
+      padding-bottom: 20px; border-bottom: 2px solid var(--border); margin-bottom: 24px;
+    }
+    .cabecalho img { width: 56px; height: 56px; }
+    .cabecalho h1 { font-size: 24px; }
+    .cabecalho .meta { color: var(--text-secondary); font-size: 13px; }
+    .cabecalho .meta strong { color: var(--text-primary); }
+
+    .scores-grid {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 22px 0;
+    }
+    .score-card {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 16px 10px; text-align: center; border-top: 4px solid var(--accent-primary);
+    }
+    .score-card.seo { border-top-color: var(--accent-seo); }
+    .score-card.geo { border-top-color: var(--accent-geo); }
+    .score-card.aeo { border-top-color: var(--accent-aeo); }
+    .score-card.frontend { border-top-color: var(--accent-frontend); }
+    .score-card .num { font-size: 30px; font-weight: 800; }
+    .score-card .nome { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-secondary); }
+
+    /* Seções */
+    section.secao { margin: 36px 0; }
+    .secao > h2 {
+      font-size: 19px; padding: 10px 14px; border-radius: 10px;
+      background: var(--bg-secondary); border-left: 5px solid var(--accent-primary);
+      margin-bottom: 16px;
+    }
+    .secao.s-seo > h2 { border-left-color: var(--accent-seo); }
+    .secao.s-geo > h2 { border-left-color: var(--accent-geo); }
+    .secao.s-aeo > h2 { border-left-color: var(--accent-aeo); }
+    .secao.s-frontend > h2 { border-left-color: var(--accent-frontend); }
+
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 16px 18px; margin: 12px 0;
+    }
+    .card h3 { font-size: 14.5px; margin-bottom: 8px; }
+    .card h4 { font-size: 13px; margin: 10px 0 4px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+    .card p, .card li { color: var(--text-secondary); font-size: 13.5px; }
+    .card ul, .card ol { padding-left: 20px; margin: 6px 0; }
+    .grade-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .selo {
+      display: inline-block; padding: 2px 10px; border-radius: 99px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+      margin-left: 8px; vertical-align: middle;
+    }
+    .selo.bom { background: rgba(16,185,129,0.15); color: var(--success); }
+    .selo.medio { background: rgba(245,158,11,0.15); color: var(--warning); }
+    .selo.ruim { background: rgba(239,68,68,0.15); color: var(--danger); }
+
+    .alerta {
+      padding: 10px 14px; border-radius: 10px; margin: 8px 0; font-size: 13px;
+      border: 1px solid; background: var(--bg-secondary);
+    }
+    .alerta.perigo { border-color: var(--danger); color: #fca5a5; }
+    .alerta.aviso { border-color: var(--warning); color: #fcd34d; }
+    .alerta.ok { border-color: var(--success); color: #6ee7b7; }
+
+    table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-secondary); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; }
+    td { color: var(--text-primary); }
+
+    .prio { font-weight: 700; }
+    .prio.alta { color: var(--danger); }
+    .prio.media { color: var(--warning); }
+    .prio.baixa { color: var(--success); }
+
+    /* Timeline 90 dias */
+    .timeline { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .timeline .mes {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+      border-top: 4px solid var(--accent-primary);
+    }
+    .timeline .mes h3 { font-size: 14px; margin-bottom: 4px; }
+    .timeline .mes .foco { color: var(--accent-primary); font-size: 12.5px; font-weight: 600; margin-bottom: 8px; }
+
+    .rodape-relatorio {
+      margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--border);
+      color: var(--text-secondary); font-size: 12px; text-align: center;
+    }
+
+    #estado-vazio { text-align: center; padding: 80px 20px; color: var(--text-secondary); }
+
+    /* Impressão (fallback de PDF via diálogo nativo) */
+    @media print {
+      #btn-exportar-pdf { display: none; }
+      body { background: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <button id="btn-exportar-pdf">📄 Exportar PDF</button>
+  <div id="relatorio">
+    <p id="estado-vazio">Carregando relatório…</p>
+  </div>
+  <script src="../libs/jspdf.umd.min.js"></script>
+  <script src="../libs/html2canvas.min.js"></script>
+  <script src="report.js"></script>
+</body>
+</html>
