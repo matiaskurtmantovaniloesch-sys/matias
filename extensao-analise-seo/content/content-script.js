@@ -422,10 +422,108 @@
     };
   }
 
+  // ---------------------------------------------------------------
+  // Subpáginas: busca links internos, baixa o HTML (fetch same-origin)
+  // e extrai um resumo SEO de cada uma. Análise estática (sem JS).
+  // ---------------------------------------------------------------
+  async function coletarSubpaginas(max = 5) {
+    const atual = new URL(window.location.href);
+    const candidatos = new Map();
+
+    const considerar = (a) => {
+      try {
+        const u = new URL(a.href, window.location.href);
+        if (!/^https?:$/.test(u.protocol) || u.hostname !== atual.hostname) return;
+        u.hash = '';
+        if (u.pathname === atual.pathname) return;
+        if (/\.(pdf|jpe?g|png|gif|webp|avif|svg|zip|rar|mp4|mp3|xml|ico|css|js|json)$/i.test(u.pathname)) return;
+        const chave = u.pathname + u.search;
+        if (!candidatos.has(chave)) candidatos.set(chave, u.href);
+      } catch { /* href inválido */ }
+    };
+    // Links do menu primeiro (páginas mais representativas do site)
+    $$('nav a[href]').forEach(considerar);
+    $$('a[href]').forEach(considerar);
+
+    const urls = [...candidatos.values()].slice(0, max);
+
+    const analisarHTML = (url, html) => {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const q = (sel) => doc.querySelector(sel);
+
+      const tipos = [];
+      doc.querySelectorAll('script[type="application/ld+json"]').forEach((s) => {
+        try {
+          const reg = (o) => {
+            if (!o || typeof o !== 'object') return;
+            if (Array.isArray(o)) { o.forEach(reg); return; }
+            if (o['@type']) (Array.isArray(o['@type']) ? o['@type'] : [o['@type']]).forEach((t) => tipos.push(String(t)));
+            if (o['@graph']) reg(o['@graph']);
+          };
+          reg(JSON.parse(s.textContent));
+        } catch { /* JSON inválido */ }
+      });
+
+      doc.body?.querySelectorAll('script, style, noscript').forEach((e) => e.remove());
+      const imgs = Array.from(doc.querySelectorAll('img'));
+
+      return {
+        url,
+        title: doc.title || null,
+        titleLength: (doc.title || '').length,
+        metaDescription: q('meta[name="description"]')?.content || null,
+        metaDescriptionLength: (q('meta[name="description"]')?.content || '').length,
+        canonical: q('link[rel="canonical"]')?.getAttribute('href') || null,
+        h1: Array.from(doc.querySelectorAll('h1')).map((h) => (h.textContent || '').trim()).slice(0, 3),
+        h1Count: doc.querySelectorAll('h1').length,
+        totalImages: imgs.length,
+        imagesWithoutAlt: imgs.filter((i) => !i.getAttribute('alt')).length,
+        wordCount: (doc.body?.textContent || '').split(/\s+/).filter(Boolean).length,
+        schemaTypes: [...new Set(tipos)].slice(0, 8),
+        hasFAQSchema: tipos.some((t) => /FAQPage/i.test(t)),
+        hasViewport: !!q('meta[name="viewport"]'),
+        hasOgTitle: !!q('meta[property="og:title"]'),
+        hasBreadcrumb: tipos.some((t) => /BreadcrumbList/i.test(t)) || !!q('.breadcrumb, .breadcrumbs'),
+      };
+    };
+
+    const resultados = await Promise.allSettled(urls.map(async (url) => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000);
+      try {
+        const r = await fetch(url, { signal: ctrl.signal, credentials: 'include' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const html = await r.text();
+        return analisarHTML(url, html.substring(0, 500000));
+      } finally {
+        clearTimeout(timer);
+      }
+    }));
+
+    return {
+      paginas: resultados.filter((r) => r.status === 'fulfilled').map((r) => r.value),
+      falhas: resultados.filter((r) => r.status === 'rejected').length,
+      candidatasEncontradas: candidatos.size,
+    };
+  }
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg && msg.tipo === 'COLETAR_DADOS') {
-      sendResponse({ ok: true, dados: coletarTudo() });
+      (async () => {
+        const dados = coletarTudo();
+        try {
+          const sub = await coletarSubpaginas(5);
+          dados.subpaginas = sub.paginas;
+          if (sub.falhas > 0) dados.limitacoes.push(`${sub.falhas} subpágina(s) não puderam ser baixadas`);
+          if (sub.candidatasEncontradas > 5) dados.limitacoes.push(`Site tem ${sub.candidatasEncontradas} páginas internas; 5 foram amostradas`);
+        } catch (e) {
+          dados.subpaginas = [];
+          dados.limitacoes.push('Análise de subpáginas indisponível: ' + e.message);
+        }
+        sendResponse({ ok: true, dados });
+      })();
+      return true; // resposta assíncrona
     }
-    return false; // resposta síncrona
+    return false;
   });
 })();

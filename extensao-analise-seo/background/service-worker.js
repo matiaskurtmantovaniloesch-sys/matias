@@ -202,6 +202,10 @@ async function processarAnalise(msg) {
     throw e;
   }
 
+  // Auditoria determinística: entra no prompt (a IA destrincha as soluções)
+  // e fica no histórico para o relatório exibir as evidências.
+  dados.auditoriaLocal = gerarAuditoriaLocal(dados);
+
   const relatorio = await enfileirar(() => analisarComRetry(apiKey, dados));
 
   // Garante campos básicos mesmo se a IA omitir
@@ -223,6 +227,8 @@ async function processarAnalise(msg) {
     nicho: relatorio.nicho,
     relatorio,
     limitacoes: dados.limitacoes || [],
+    auditoria: dados.auditoriaLocal,
+    subpaginasAnalisadas: (dados.subpaginas || []).map((p) => p.url),
   };
   await salvarNoHistorico(entrada);
 

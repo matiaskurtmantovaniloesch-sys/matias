@@ -74,6 +74,52 @@ function cardEEAT(titulo, e) {
 // ------------------------------------------------------------------
 // Seções
 // ------------------------------------------------------------------
+function seloSeveridade(sev) {
+  const t = String(sev || '').toLowerCase();
+  const cls = /cr[ií]tico|alto/.test(t) ? 'ruim' : /m[ée]dio/.test(t) ? 'medio' : 'bom';
+  return `<span class="selo ${cls}">${esc(sev || '—')}</span>`;
+}
+
+function secaoProblemas(rel, entrada) {
+  const itens = rel.problemasESolucoes || [];
+  const auditoria = entrada.auditoria || [];
+  const subs = entrada.subpaginasAnalisadas || [];
+  if (!itens.length && !auditoria.length) return '';
+
+  const ordem = { 'crítico': 0, 'critico': 0, 'alto': 1, 'médio': 2, 'medio': 2, 'baixo': 3 };
+  const ordenados = [...itens].sort((a, b) =>
+    (ordem[String(a.severidade || '').toLowerCase()] ?? 9) - (ordem[String(b.severidade || '').toLowerCase()] ?? 9));
+
+  const cards = ordenados.map((p, i) => `<div class="card">
+    <h3>${i + 1}. [${esc(p.categoria)}] ${esc(p.problema)} ${seloSeveridade(p.severidade)}</h3>
+    <p><strong>Evidência:</strong> ${esc(p.evidencia)}</p>
+    ${p.paginasAfetadas?.length ? `<p><strong>Páginas afetadas:</strong> ${p.paginasAfetadas.map(esc).join(' · ')}</p>` : ''}
+    <h4>Como resolver — passo a passo</h4>
+    <ol>${(p.solucaoPassoAPasso || []).map((s) => `<li>${esc(s)}</li>`).join('')}</ol>
+    <div class="alerta ok"><strong>Impacto esperado:</strong> ${esc(p.impactoEsperado)}</div>
+  </div>`).join('');
+
+  const linhasAuditoria = auditoria.map((a) => `<tr>
+    <td>${esc(a.categoria)}</td>
+    <td>${seloSeveridade(a.severidade)}</td>
+    <td>${esc(a.problema)}</td>
+    <td>${esc(a.evidencia)}</td>
+  </tr>`).join('');
+
+  return `<section class="secao">
+    <h2>⚠️ Problemas evidenciados &amp; soluções detalhadas</h2>
+    ${subs.length ? `<div class="alerta ok"><strong>Análise multi-página:</strong> além da página principal, foram analisadas ${subs.length} subpáginas — ${subs.map(esc).join(' · ')}</div>` : ''}
+    ${cards || '<p>A IA não detalhou problemas — veja a auditoria automática abaixo.</p>'}
+    ${linhasAuditoria ? `<div class="card">
+      <h3>Auditoria automática (verificações técnicas locais — ${auditoria.length} apontamentos)</h3>
+      <table>
+        <thead><tr><th>Categoria</th><th>Severidade</th><th>Problema</th><th>Evidência</th></tr></thead>
+        <tbody>${linhasAuditoria}</tbody>
+      </table>
+    </div>` : ''}
+  </section>`;
+}
+
 function secaoSEO(seo) {
   if (!seo) return '';
   const t = seo.seoTecnico || {};
@@ -404,6 +450,7 @@ function renderizar(entrada) {
       <p>${esc(rel.nichoDetalhado)}</p>
     </div>
 
+    ${secaoProblemas(rel, entrada)}
     ${secaoSEO(rel.seo)}
     ${secaoGEO(rel.geo)}
     ${secaoAEO(rel.aeo)}

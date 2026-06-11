@@ -50,11 +50,11 @@ function compactarDados(dados, nivel) {
   fe.navItems = fatia(fe.navItems, nivel >= 2 ? 6 : 12);
   fe.fontFamilies = fatia(fe.fontFamilies, 4);
 
-  seo.textContent = corta(seo.textContent, nivel >= 2 ? 600 : 1500);
-  seo.schemaRaw = corta(seo.schemaRaw, nivel >= 2 ? 0 : 600);
-  seo.imagesAltList = (fatia(seo.imagesAltList, nivel >= 2 ? 0 : 6) || [])
+  seo.textContent = corta(seo.textContent, nivel >= 2 ? 600 : 1100);
+  seo.schemaRaw = corta(seo.schemaRaw, nivel >= 2 ? 0 : 500);
+  seo.imagesAltList = (fatia(seo.imagesAltList, nivel >= 2 ? 0 : 4) || [])
     .map((i) => ({ src: (i.src || '').slice(-60), alt: corta(i.alt, 60) }));
-  ['h2', 'h3', 'h4', 'h5', 'h6'].forEach((h) => { seo[h] = fatia(seo[h], nivel >= 2 ? 4 : 10); });
+  ['h2', 'h3', 'h4', 'h5', 'h6'].forEach((h) => { seo[h] = fatia(seo[h], nivel >= 2 ? 4 : 8); });
   seo.hreflangTags = fatia(seo.hreflangTags, 6);
 
   geo.localBusinessSchema = corta(geo.localBusinessSchema, nivel >= 2 ? 0 : 400);
@@ -65,7 +65,111 @@ function compactarDados(dados, nivel) {
   aeo.sameAsLinks = fatia(aeo.sameAsLinks, 6);
   aeo.schemaValidationIssues = fatia(aeo.schemaValidationIssues, nivel >= 2 ? 4 : 10);
 
+  // Subpáginas: resumo por página (nível 2 mantém só as 2 primeiras)
+  d.subpaginas = (fatia(d.subpaginas, nivel >= 2 ? 2 : 5) || []).map((p) => ({
+    ...p,
+    title: corta(p.title, 80),
+    metaDescription: nivel >= 2 ? !!p.metaDescription : corta(p.metaDescription, 120),
+    h1: fatia(p.h1, 2),
+    schemaTypes: fatia(p.schemaTypes, 5),
+  }));
+
+  // Auditoria local: a IA precisa dela para destrinchar as soluções
+  d.auditoriaLocal = fatia(d.auditoriaLocal, nivel >= 2 ? 18 : 35);
+
   return d;
+}
+
+// ------------------------------------------------------------------
+// Auditoria local: verificações determinísticas sobre os dados coletados.
+// Gera a lista de problemas EVIDENCIADOS (com evidência concreta) que a IA
+// deve destrinchar com soluções — e que o relatório exibe mesmo sem IA.
+// ------------------------------------------------------------------
+function gerarAuditoriaLocal(dados) {
+  const seo = dados.seoData || {};
+  const geo = dados.geoData || {};
+  const aeo = dados.aeoData || {};
+  const fe = dados.frontendData || {};
+  const subs = dados.subpaginas || [];
+  const problemas = [];
+  const add = (categoria, severidade, problema, evidencia) =>
+    problemas.push({ categoria, severidade, problema, evidencia });
+
+  // ----- SEO (página atual) -----
+  if (!seo.title) add('SEO', 'Crítico', 'Página sem <title>', 'document.title vazio');
+  else if (seo.titleLength < 30) add('SEO', 'Alto', 'Title muito curto', `"${seo.title}" tem ${seo.titleLength} caracteres (ideal 50-60)`);
+  else if (seo.titleLength > 65) add('SEO', 'Médio', 'Title muito longo (será cortado na SERP)', `${seo.titleLength} caracteres (ideal 50-60)`);
+  if (!seo.metaDescription) add('SEO', 'Alto', 'Meta description ausente', 'Google gera snippet automático, reduzindo CTR');
+  else if (seo.metaDescriptionLength < 120 || seo.metaDescriptionLength > 165) add('SEO', 'Médio', 'Meta description fora do tamanho ideal', `${seo.metaDescriptionLength} caracteres (ideal 150-160)`);
+  if (!seo.canonicalURL) add('SEO', 'Médio', 'Sem tag canonical', 'Risco de conteúdo duplicado entre variações de URL');
+  const h1s = seo.h1 || [];
+  if (h1s.length === 0) add('SEO', 'Alto', 'Página sem H1', 'Nenhum <h1> encontrado');
+  else if (h1s.length > 1) add('SEO', 'Médio', 'Múltiplos H1 na página', `${h1s.length} H1 encontrados: ${h1s.slice(0, 3).join(' | ')}`);
+  if ((seo.imagesWithoutAlt || 0) > 0) add('SEO', 'Médio', 'Imagens sem atributo alt', `${seo.imagesWithoutAlt} de ${seo.totalImages} imagens sem alt`);
+  if ((seo.schemaTypes || []).length === 0) add('SEO', 'Alto', 'Nenhum dado estruturado (Schema.org)', 'Sem LD+JSON na página');
+  if ((seo.schemaTypes || []).includes('INVÁLIDO')) add('SEO', 'Alto', 'Schema LD+JSON com JSON inválido', 'Bloco não parseável — ignorado pelo Google');
+  if (!seo.isHTTPS) add('SEO', 'Crítico', 'Site sem HTTPS', `Protocolo atual: ${seo.protocol}`);
+  if (!seo.lang) add('SEO', 'Médio', 'Atributo lang ausente no <html>', 'Buscadores e leitores de tela não identificam o idioma');
+  if ((seo.wordCount || 0) < 300) add('SEO', 'Alto', 'Conteúdo raso (thin content)', `Apenas ${seo.wordCount} palavras na página`);
+  if ((seo.brokenLinkCandidates || 0) > 0) add('SEO', 'Baixo', 'Links vazios ou com href="#"', `${seo.brokenLinkCandidates} candidatos a link quebrado`);
+  if (!seo.ogTitle || !seo.ogDescription || !seo.ogImage) {
+    const faltam = [!seo.ogTitle && 'og:title', !seo.ogDescription && 'og:description', !seo.ogImage && 'og:image'].filter(Boolean);
+    add('SEO', 'Médio', 'Open Graph incompleto', `Faltam: ${faltam.join(', ')}`);
+  }
+  if (!seo.twitterCard) add('SEO', 'Baixo', 'Twitter Card ausente', 'meta name="twitter:card" não encontrada');
+  if (!seo.hasFavicon) add('SEO', 'Baixo', 'Favicon ausente', 'link rel="icon" não encontrado');
+
+  // ----- SEO (subpáginas) -----
+  const titulos = {};
+  subs.forEach((p) => {
+    if (p.title) (titulos[p.title.toLowerCase()] = titulos[p.title.toLowerCase()] || []).push(p.url);
+  });
+  if (seo.title) (titulos[seo.title.toLowerCase()] = titulos[seo.title.toLowerCase()] || []).push(seo.url);
+  Object.entries(titulos).filter(([, urls]) => urls.length > 1).slice(0, 3).forEach(([t, urls]) => {
+    add('SEO', 'Alto', 'Title duplicado entre páginas', `"${t.substring(0, 60)}" em: ${urls.join(' ; ')}`);
+  });
+  subs.forEach((p) => {
+    if (!p.metaDescription) add('SEO', 'Médio', 'Subpágina sem meta description', p.url);
+    if (p.h1Count === 0) add('SEO', 'Médio', 'Subpágina sem H1', p.url);
+    if (p.h1Count > 1) add('SEO', 'Baixo', 'Subpágina com múltiplos H1', `${p.url} (${p.h1Count} H1)`);
+    if (!p.canonical) add('SEO', 'Baixo', 'Subpágina sem canonical', p.url);
+    if ((p.imagesWithoutAlt || 0) > 0) add('SEO', 'Baixo', 'Subpágina com imagens sem alt', `${p.url}: ${p.imagesWithoutAlt}/${p.totalImages}`);
+    if ((p.wordCount || 0) < 200) add('SEO', 'Médio', 'Subpágina com conteúdo raso', `${p.url}: ${p.wordCount} palavras`);
+    if ((p.schemaTypes || []).length === 0) add('SEO', 'Baixo', 'Subpágina sem dados estruturados', p.url);
+  });
+
+  // ----- GEO -----
+  if (!geo.hasAboutPage) add('GEO', 'Alto', 'Sem página "Sobre/Quem somos"', 'Sinal E-E-A-T de experiência/transparência ausente');
+  if (!geo.hasContactPage) add('GEO', 'Alto', 'Sem página de contato visível', 'IAs e usuários não encontram canal de contato');
+  if (!geo.hasPrivacyPolicy) add('GEO', 'Médio', 'Sem política de privacidade', 'Sinal de confiabilidade ausente (LGPD)');
+  if (!geo.hasAuthorInfo) add('GEO', 'Médio', 'Sem autoria identificável no conteúdo', 'Nenhum marcador de autor (rel=author, .author, Person)');
+  if (!geo.hasNAP) add('GEO', 'Médio', 'NAP incompleto (Nome, Endereço, Telefone)', `Encontrado: tel=${geo.napData?.phone || '—'}, end=${geo.napData?.address || '—'}`);
+  if (!geo.hasSocialProof) add('GEO', 'Médio', 'Sem prova social no site', 'Nenhum depoimento/avaliação/review detectado');
+  if (!aeo.hasSameAs) add('GEO', 'Médio', 'Schema sem sameAs', 'Perfis sociais não conectados ao Knowledge Graph');
+
+  // ----- AEO -----
+  if (!aeo.hasFAQSchema) add('AEO', 'Alto', 'Sem FAQ Schema (FAQPage)', 'Site não concorre a rich results de perguntas');
+  if ((aeo.questionElements || []).length === 0) add('AEO', 'Médio', 'Nenhum heading em formato de pergunta', 'Headings com "?" são âncora para featured snippets e busca por voz');
+  if (!aeo.hasBreadcrumb) add('AEO', 'Médio', 'Sem breadcrumbs', 'Nem BreadcrumbList nem navegação estrutural detectadas');
+  if ((aeo.hasConciseAnswers || 0) === 0) add('AEO', 'Médio', 'Sem respostas concisas após headings', 'Nenhum parágrafo <50 palavras após H2/H3 (formato de resposta direta)');
+  if ((aeo.hasTableData || 0) === 0 && (aeo.hasNumberedLists || 0) === 0) add('AEO', 'Baixo', 'Sem tabelas nem listas numeradas', 'Estruturas favoritas de featured snippets ausentes');
+  if ((aeo.schemaValidationIssues || []).length > 0) add('AEO', 'Alto', 'Schemas com campos obrigatórios faltando', (aeo.schemaValidationIssues || []).slice(0, 3).join('; '));
+
+  // ----- Frontend -----
+  if (!fe.hasViewportMeta) add('Frontend', 'Crítico', 'Sem meta viewport', 'Página não responsiva em mobile — penalidade no mobile-first index');
+  if (fe.hasMixedContent) add('Frontend', 'Crítico', 'Mixed content (recursos http em página https)', 'Navegadores bloqueiam ou alertam');
+  if ((fe.loadTime || 0) > 4000) add('Frontend', 'Alto', 'Carregamento lento', `loadTime ≈ ${fe.loadTime}ms (meta: <2500ms)`);
+  if ((fe.totalImages || 0) > 5 && (fe.lazyImages || 0) === 0) add('Frontend', 'Médio', 'Nenhuma imagem com lazy loading', `${fe.totalImages} imagens, 0 com loading="lazy"`);
+  if ((fe.totalImages || 0) > 5 && (fe.modernImageFormats || 0) === 0) add('Frontend', 'Médio', 'Sem formatos modernos de imagem', 'Nenhuma imagem WebP/AVIF detectada');
+  if ((seo.totalScripts || 0) > 30) add('Frontend', 'Médio', 'Excesso de scripts', `${seo.totalScripts} tags <script> na página`);
+  if (!fe.hasSkipLink && (fe.hasAriaLabels || 0) < 3) add('Frontend', 'Médio', 'Acessibilidade fraca', `Sem skip link e apenas ${fe.hasAriaLabels || 0} aria-label`);
+  if ((fe.ctaButtons || []).length === 0) add('Frontend', 'Alto', 'Nenhum CTA detectado', 'Sem botões/chamadas para ação visíveis');
+  if (!fe.hasFooter) add('Frontend', 'Baixo', 'Sem <footer> semântico', 'Rodapé estrutural ausente');
+  subs.forEach((p) => {
+    if (!p.hasViewport) add('Frontend', 'Alto', 'Subpágina sem meta viewport', p.url);
+  });
+
+  return problemas;
 }
 
 // Obfuscação simples da API key antes de gravar no chrome.storage.local.
@@ -103,6 +207,18 @@ const FORMATO_RELATORIO = `{
   "scoreFrontend": 0-100,
 
   "resumoExecutivo": "parágrafo de 3-5 linhas com o panorama geral do site",
+
+  "problemasESolucoes": [
+    {
+      "categoria": "SEO | GEO | AEO | Frontend",
+      "severidade": "Crítico | Alto | Médio | Baixo",
+      "problema": "descrição objetiva do problema evidenciado",
+      "evidencia": "dado coletado que comprova o problema, citando valores e URLs",
+      "paginasAfetadas": ["urls das páginas onde o problema ocorre"],
+      "solucaoPassoAPasso": ["passo 1 concreto", "passo 2", "passo 3 (inclua exemplo de código/tag quando aplicável)"],
+      "impactoEsperado": "ganho esperado ao corrigir (tráfego, CTR, citação por IAs, conversão)"
+    }
+  ],
 
   "seo": {
     "pontuacao": 0-100,
@@ -181,7 +297,10 @@ const FORMATO_RELATORIO = `{
 
 function montarPromptGroq(dados, nivel = 1) {
   const compacto = compactarDados(dados, nivel);
-  const { seoData = {}, geoData = {}, aeoData = {}, frontendData = {}, limitacoes = [] } = compacto;
+  const {
+    seoData = {}, geoData = {}, aeoData = {}, frontendData = {},
+    subpaginas = [], auditoriaLocal = [], limitacoes = [],
+  } = compacto;
   return `
 Você é um especialista sênior em SEO, GEO (Generative Engine Optimization), AEO (Answer Engine Optimization), UX/UI e Marketing Digital.
 Analise profundamente os dados técnicos do site abaixo e produza um relatório COMPLETO, DETALHADO e PROFISSIONAL.
@@ -204,6 +323,12 @@ ${JSON.stringify(aeoData)}
 ### DADOS FRONTEND:
 ${JSON.stringify(frontendData)}
 
+### SUBPÁGINAS DO SITE (análise multi-página — ${subpaginas.length} página(s) interna(s)):
+${JSON.stringify(subpaginas)}
+
+### AUDITORIA LOCAL — PROBLEMAS JÁ EVIDENCIADOS (destrinche TODOS em "problemasESolucoes"):
+${JSON.stringify(auditoriaLocal)}
+
 ---
 
 ## INSTRUÇÕES PARA O RELATÓRIO
@@ -216,6 +341,12 @@ IMPORTANTE:
 - Seja EXTREMAMENTE específico para o nicho identificado
 - Todas as sugestões devem ser ACIONÁVEIS e PRÁTICAS
 - Base todas as análises nos dados reais coletados
+- Em "problemasESolucoes": cubra os problemas da AUDITORIA LOCAL (agrupe os repetidos
+  entre subpáginas em um único item listando as URLs em paginasAfetadas) e acrescente
+  outros que identificar nos dados. Cada item deve ter solução passo a passo concreta,
+  com exemplo de tag/código quando aplicável. Liste do mais crítico ao menos crítico.
+- Considere as SUBPÁGINAS na análise: consistência de titles, meta descriptions,
+  H1, schemas e padrões que se repetem pelo site
 - O JSON deve ser válido e completo
 - Não use linguagem genérica; adapte tudo ao nicho identificado
 - Escreva TODO o relatório em Português do Brasil
@@ -228,6 +359,7 @@ if (typeof globalThis !== 'undefined') {
   globalThis.montarPromptGroq = montarPromptGroq;
   globalThis.estimarTokens = estimarTokens;
   globalThis.compactarDados = compactarDados;
+  globalThis.gerarAuditoriaLocal = gerarAuditoriaLocal;
   globalThis.ofuscarKey = ofuscarKey;
   globalThis.desofuscarKey = desofuscarKey;
 }

@@ -218,6 +218,14 @@ async function analisar(forcar) {
 // Tela 4 — Resultado resumido
 // ------------------------------------------------------------------
 function extrairTopProblemas(rel) {
+  // Fonte preferida: problemas destrinchados pela IA, do mais grave ao menos
+  if (rel.problemasESolucoes?.length) {
+    const ordem = { 'crítico': 0, 'critico': 0, 'alto': 1, 'médio': 2, 'medio': 2, 'baixo': 3 };
+    return [...rel.problemasESolucoes]
+      .sort((a, b) => (ordem[String(a.severidade || '').toLowerCase()] ?? 9) - (ordem[String(b.severidade || '').toLowerCase()] ?? 9))
+      .slice(0, 6)
+      .map((p) => `[${p.categoria}] ${p.problema}`);
+  }
   const problemas = [];
   const fontes = [
     ['SEO', rel.seo?.seoTecnico?.problemasCriticos, rel.seo?.estruturaHeadings?.problemas],
