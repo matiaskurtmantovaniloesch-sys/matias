@@ -172,6 +172,92 @@ function gerarAuditoriaLocal(dados) {
   return problemas;
 }
 
+// ------------------------------------------------------------------
+// ETAPA 2: prompt de detalhamento — destrincha cada problema com solução
+// completa (código pronto, dificuldade, tempo, métrica) + roadmap de
+// próximos passos. Chamada separada para não disputar tokens com o
+// relatório principal.
+// ------------------------------------------------------------------
+const FORMATO_DETALHAMENTO = `{
+  "problemasDetalhados": [
+    {
+      "id": 1,
+      "categoria": "SEO | GEO | AEO | Frontend",
+      "severidade": "Crítico | Alto | Médio | Baixo",
+      "problema": "título objetivo do problema",
+      "porqueImporta": "explicação didática de por que isso prejudica o site, específica para o nicho",
+      "evidencia": "dado coletado que comprova, com valores e URLs",
+      "paginasAfetadas": ["urls"],
+      "comoResolver": {
+        "passos": ["passo 1 bem concreto", "passo 2", "passo 3"],
+        "codigoExemplo": "tag/código PRONTO PARA COLAR, já adaptado ao site e nicho (string vazia se não se aplica)",
+        "ferramentas": ["ferramentas gratuitas que ajudam"],
+        "dificuldade": "Fácil | Média | Avançada",
+        "tempoEstimado": "ex.: 30 minutos"
+      },
+      "metricaDeSucesso": "como medir que foi resolvido (ferramenta + indicador)",
+      "impactoEsperado": "ganho concreto esperado (tráfego, CTR, citação por IAs, conversão)"
+    }
+  ],
+  "proximosPassos": [
+    {
+      "ordem": 1,
+      "semana": "Semana 1",
+      "acao": "ação clara e específica",
+      "categoria": "SEO | GEO | AEO | Frontend",
+      "dependeDe": "número da ordem de outra ação, ou —",
+      "resultadoEsperado": "o que muda quando concluído"
+    }
+  ],
+  "quickWins": ["4-6 ações de menos de 1 hora com impacto imediato, específicas deste site"]
+}`;
+
+function montarPromptDetalhamento(dados, relatorio, nivel = 1) {
+  const compacto = compactarDados(dados, nivel);
+  const { seoData = {}, subpaginas = [], auditoriaLocal = [] } = compacto;
+  const resumoSite = {
+    url: seoData.url,
+    title: seoData.title,
+    metaDescription: seoData.metaDescription,
+    wordCount: seoData.wordCount,
+    schemaTypes: seoData.schemaTypes,
+    nicho: relatorio?.nicho,
+    nichoDetalhado: (relatorio?.nichoDetalhado || '').substring(0, 300),
+    scores: {
+      seo: relatorio?.scoreSEO, geo: relatorio?.scoreGEO,
+      aeo: relatorio?.scoreAEO, frontend: relatorio?.scoreFrontend,
+    },
+  };
+  return `
+Você é um consultor sênior de SEO/GEO/AEO/Frontend. Sua missão é DESTRINCHAR os problemas
+do site abaixo em soluções completas e um roadmap de próximos passos executável.
+
+## SITE
+${JSON.stringify(resumoSite)}
+
+## SUBPÁGINAS ANALISADAS
+${JSON.stringify(subpaginas)}
+
+## PROBLEMAS EVIDENCIADOS (auditoria técnica automática)
+${JSON.stringify(auditoriaLocal)}
+
+## INSTRUÇÕES
+Produza JSON EXATAMENTE no formato abaixo, sem texto fora do JSON:
+
+${FORMATO_DETALHAMENTO}
+
+REGRAS:
+- Cubra TODOS os problemas da auditoria: agrupe os repetidos entre subpáginas em um
+  único item, listando as URLs em paginasAfetadas. Acrescente problemas que você
+  identificar além da auditoria. Liste do mais crítico ao menos crítico (10-14 itens).
+- codigoExemplo deve ser REAL e pronto para colar: meta tags com o texto sugerido,
+  LD+JSON completo com os dados do site/nicho, atributos HTML — nunca pseudocódigo.
+- proximosPassos: 10-15 ações ordenadas por dependência e impacto, distribuídas
+  em semanas (Semana 1 a Semana 12).
+- Tudo em Português do Brasil, específico para o nicho — nada genérico.
+`;
+}
+
 // Obfuscação simples da API key antes de gravar no chrome.storage.local.
 // Atenção: NÃO é criptografia forte — uma extensão client-side não tem
 // onde esconder um segredo. Serve apenas para evitar exposição casual.
@@ -341,10 +427,9 @@ IMPORTANTE:
 - Seja EXTREMAMENTE específico para o nicho identificado
 - Todas as sugestões devem ser ACIONÁVEIS e PRÁTICAS
 - Base todas as análises nos dados reais coletados
-- Em "problemasESolucoes": cubra os problemas da AUDITORIA LOCAL (agrupe os repetidos
-  entre subpáginas em um único item listando as URLs em paginasAfetadas) e acrescente
-  outros que identificar nos dados. Cada item deve ter solução passo a passo concreta,
-  com exemplo de tag/código quando aplicável. Liste do mais crítico ao menos crítico.
+- Em "problemasESolucoes": liste os 6 a 10 problemas MAIS GRAVES da AUDITORIA LOCAL
+  com solução passo a passo resumida (haverá uma etapa posterior de detalhamento
+  completo — aqui priorize cobrir o essencial sem estourar o tamanho da resposta).
 - Considere as SUBPÁGINAS na análise: consistência de titles, meta descriptions,
   H1, schemas e padrões que se repetem pelo site
 - O JSON deve ser válido e completo
@@ -360,6 +445,7 @@ if (typeof globalThis !== 'undefined') {
   globalThis.estimarTokens = estimarTokens;
   globalThis.compactarDados = compactarDados;
   globalThis.gerarAuditoriaLocal = gerarAuditoriaLocal;
+  globalThis.montarPromptDetalhamento = montarPromptDetalhamento;
   globalThis.ofuscarKey = ofuscarKey;
   globalThis.desofuscarKey = desofuscarKey;
 }

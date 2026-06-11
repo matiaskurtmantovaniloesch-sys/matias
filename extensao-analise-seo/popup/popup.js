@@ -217,8 +217,16 @@ async function analisar(forcar) {
 // ------------------------------------------------------------------
 // Tela 4 — Resultado resumido
 // ------------------------------------------------------------------
-function extrairTopProblemas(rel) {
-  // Fonte preferida: problemas destrinchados pela IA, do mais grave ao menos
+function extrairTopProblemas(rel, entrada) {
+  // Fonte preferida: detalhamento da etapa 2, depois o bloco do relatório
+  const detalhados = entrada?.detalhamento?.problemasDetalhados;
+  if (detalhados?.length) {
+    const ordem = { 'crítico': 0, 'critico': 0, 'alto': 1, 'médio': 2, 'medio': 2, 'baixo': 3 };
+    return [...detalhados]
+      .sort((a, b) => (ordem[String(a.severidade || '').toLowerCase()] ?? 9) - (ordem[String(b.severidade || '').toLowerCase()] ?? 9))
+      .slice(0, 6)
+      .map((p) => `[${p.categoria}] ${p.problema}`);
+  }
   if (rel.problemasESolucoes?.length) {
     const ordem = { 'crítico': 0, 'critico': 0, 'alto': 1, 'médio': 2, 'medio': 2, 'baixo': 3 };
     return [...rel.problemasESolucoes]
@@ -270,7 +278,7 @@ function mostrarResultado(entrada) {
 
   const ulP = $('lista-problemas');
   ulP.innerHTML = '';
-  extrairTopProblemas(rel).forEach((p) => {
+  extrairTopProblemas(rel, entrada).forEach((p) => {
     const li = document.createElement('li');
     li.textContent = typeof p === 'string' ? p : JSON.stringify(p);
     ulP.appendChild(li);
@@ -308,6 +316,13 @@ $('btn-pdf-resultado').addEventListener('click', () => abrirRelatorio(null, true
 $('btn-voltar').addEventListener('click', async () => {
   mostrarTela('tela-dashboard');
   await carregarDashboard();
+});
+
+// Progresso enviado pelo service worker durante as etapas de IA
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.tipo === 'PROGRESSO_ANALISE' && msg.texto) {
+    $('estimativa').textContent = msg.texto;
+  }
 });
 
 // ------------------------------------------------------------------

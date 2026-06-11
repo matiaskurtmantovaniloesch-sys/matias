@@ -105,6 +105,7 @@ async function chamarGroq(apiKey, prompt, modelo, maxTokens) {
     if (resp.status === 429) {
       const e = new Error('Rate limit da Groq atingido.');
       e.codigo = 'RATE_LIMIT';
+      e.retryAfter = Number(resp.headers.get('retry-after')) || null;
       throw e;
     }
     if (resp.status === 413) {
@@ -131,6 +132,15 @@ async function chamarGroq(apiKey, prompt, modelo, maxTokens) {
 function calcularMaxTokens(prompt) {
   const sobra = GROQ_CONFIG.orcamentoTPM - estimarTokens(prompt);
   return Math.max(GROQ_CONFIG.maxTokensPiso, Math.min(GROQ_CONFIG.maxTokensTeto, sobra));
+}
+
+const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Notifica o popup (se aberto) sobre a etapa em andamento
+function notificarProgresso(texto) {
+  try {
+    chrome.runtime.sendMessage({ tipo: 'PROGRESSO_ANALISE', texto }, () => chrome.runtime.lastError);
+  } catch { /* popup fechado */ }
 }
 
 async function analisarComRetry(apiKey, dados) {
@@ -162,6 +172,8 @@ async function analisarComRetry(apiKey, dados) {
       // Prompt grande demais, ou resposta truncada por falta de espaço
       // (json_validate_failed): compactar o prompt libera tokens de saída.
       if (e.codigo === 'REQUISICAO_GRANDE' || /json_validate/i.test(e.message)) nivel = 2;
+      // Rate limit por minuto: aguardar o tempo indicado pela Groq
+      if (e.codigo === 'RATE_LIMIT') await esperar(((e.retryAfter || 20) + 2) * 1000);
       ultimoErro = e.name === 'AbortError' ? new Error('Timeout na chamada à API Groq.') : e;
     }
     if (!ehFallback) erroPrincipal = ultimoErro;
@@ -169,6 +181,34 @@ async function analisarComRetry(apiKey, dados) {
   // Se o fallback falhou por motivo próprio (ex.: modelo indisponível),
   // reporta o erro do modelo principal, que é a causa real.
   throw erroPrincipal || ultimoErro || new Error('Falha desconhecida na análise.');
+}
+
+// ------------------------------------------------------------------
+// ETAPA 2: detalhamento dos problemas + roadmap. Roda logo após o
+// relatório principal — como as duas chamadas juntas excedem o limite
+// de tokens/minuto do tier gratuito, o 429 aqui é esperado e tratado
+// aguardando o retry-after da Groq.
+// ------------------------------------------------------------------
+async function detalharComRetry(apiKey, dados, relatorio) {
+  let nivel = 1;
+  for (let tentativa = 0; tentativa < 4; tentativa++) {
+    const prompt = montarPromptDetalhamento(dados, relatorio, nivel);
+    try {
+      const conteudo = await chamarGroq(apiKey, prompt, GROQ_CONFIG.modelo, calcularMaxTokens(prompt));
+      const json = parsearJSONRelatorio(conteudo);
+      if (json && (json.problemasDetalhados || json.proximosPassos)) return json;
+    } catch (e) {
+      if (e.fatal) throw e;
+      if (e.codigo === 'REQUISICAO_GRANDE' || /json_validate/i.test(e.message)) nivel = 2;
+      if (e.codigo === 'RATE_LIMIT') {
+        notificarProgresso(`Aguardando liberação de cota da Groq (~${(e.retryAfter || 20)}s)…`);
+        await esperar(((e.retryAfter || 20) + 2) * 1000);
+      } else {
+        await esperar(2000 * (tentativa + 1));
+      }
+    }
+  }
+  return null; // detalhamento é opcional: o relatório principal segue válido
 }
 
 // ------------------------------------------------------------------
@@ -206,7 +246,14 @@ async function processarAnalise(msg) {
   // e fica no histórico para o relatório exibir as evidências.
   dados.auditoriaLocal = gerarAuditoriaLocal(dados);
 
+  notificarProgresso('Etapa 1/2: gerando relatório geral…');
   const relatorio = await enfileirar(() => analisarComRetry(apiKey, dados));
+
+  notificarProgresso('Etapa 2/2: destrinchando problemas e próximos passos…');
+  let detalhamento = null;
+  try {
+    detalhamento = await enfileirar(() => detalharComRetry(apiKey, dados, relatorio));
+  } catch { /* opcional — segue sem detalhamento */ }
 
   // Garante campos básicos mesmo se a IA omitir
   relatorio.urlAnalisada = relatorio.urlAnalisada || dados.seoData.url;
@@ -229,7 +276,11 @@ async function processarAnalise(msg) {
     limitacoes: dados.limitacoes || [],
     auditoria: dados.auditoriaLocal,
     subpaginasAnalisadas: (dados.subpaginas || []).map((p) => p.url),
+    detalhamento,
   };
+  if (!detalhamento) {
+    entrada.limitacoes = [...entrada.limitacoes, 'Detalhamento extra (etapa 2) indisponível — exibindo a versão resumida dos problemas'];
+  }
   await salvarNoHistorico(entrada);
 
   return { relatorio, doCache: false, timestamp: entrada.timestamp };

@@ -80,24 +80,55 @@ function seloSeveridade(sev) {
   return `<span class="selo ${cls}">${esc(sev || '—')}</span>`;
 }
 
-function secaoProblemas(rel, entrada) {
-  const itens = rel.problemasESolucoes || [];
-  const auditoria = entrada.auditoria || [];
-  const subs = entrada.subpaginasAnalisadas || [];
-  if (!itens.length && !auditoria.length) return '';
-
+function ordenarPorSeveridade(itens) {
   const ordem = { 'crítico': 0, 'critico': 0, 'alto': 1, 'médio': 2, 'medio': 2, 'baixo': 3 };
-  const ordenados = [...itens].sort((a, b) =>
+  return [...itens].sort((a, b) =>
     (ordem[String(a.severidade || '').toLowerCase()] ?? 9) - (ordem[String(b.severidade || '').toLowerCase()] ?? 9));
+}
 
-  const cards = ordenados.map((p, i) => `<div class="card">
+// Card rico (etapa 2 de detalhamento da IA)
+function cardProblemaDetalhado(p, i) {
+  const r = p.comoResolver || {};
+  return `<div class="card">
+    <h3>${i + 1}. [${esc(p.categoria)}] ${esc(p.problema)} ${seloSeveridade(p.severidade)}</h3>
+    <p><strong>Por que importa:</strong> ${esc(p.porqueImporta)}</p>
+    <p><strong>Evidência:</strong> ${esc(p.evidencia)}</p>
+    ${p.paginasAfetadas?.length ? `<p><strong>Páginas afetadas:</strong> ${p.paginasAfetadas.map(esc).join(' · ')}</p>` : ''}
+    <h4>Como resolver — passo a passo
+      ${r.dificuldade ? `<span class="selo ${/f[áa]cil/i.test(r.dificuldade) ? 'bom' : /avan/i.test(r.dificuldade) ? 'ruim' : 'medio'}">${esc(r.dificuldade)}</span>` : ''}
+      ${r.tempoEstimado ? `<span class="selo medio">⏱ ${esc(r.tempoEstimado)}</span>` : ''}
+    </h4>
+    <ol>${(r.passos || []).map((s) => `<li>${esc(s)}</li>`).join('')}</ol>
+    ${r.codigoExemplo ? `<h4>Código pronto para colar</h4><pre class="codigo">${esc(r.codigoExemplo)}</pre>` : ''}
+    ${r.ferramentas?.length ? `<p><strong>Ferramentas:</strong> ${r.ferramentas.map(esc).join(' · ')}</p>` : ''}
+    ${p.metricaDeSucesso ? `<p><strong>Como medir o sucesso:</strong> ${esc(p.metricaDeSucesso)}</p>` : ''}
+    <div class="alerta ok"><strong>Impacto esperado:</strong> ${esc(p.impactoEsperado)}</div>
+  </div>`;
+}
+
+// Card resumido (fallback: bloco problemasESolucoes do relatório principal)
+function cardProblemaResumido(p, i) {
+  return `<div class="card">
     <h3>${i + 1}. [${esc(p.categoria)}] ${esc(p.problema)} ${seloSeveridade(p.severidade)}</h3>
     <p><strong>Evidência:</strong> ${esc(p.evidencia)}</p>
     ${p.paginasAfetadas?.length ? `<p><strong>Páginas afetadas:</strong> ${p.paginasAfetadas.map(esc).join(' · ')}</p>` : ''}
     <h4>Como resolver — passo a passo</h4>
     <ol>${(p.solucaoPassoAPasso || []).map((s) => `<li>${esc(s)}</li>`).join('')}</ol>
     <div class="alerta ok"><strong>Impacto esperado:</strong> ${esc(p.impactoEsperado)}</div>
-  </div>`).join('');
+  </div>`;
+}
+
+function secaoProblemas(rel, entrada) {
+  const det = entrada.detalhamento;
+  const detalhados = det?.problemasDetalhados || [];
+  const resumidos = rel.problemasESolucoes || [];
+  const auditoria = entrada.auditoria || [];
+  const subs = entrada.subpaginasAnalisadas || [];
+  if (!detalhados.length && !resumidos.length && !auditoria.length) return '';
+
+  const cards = detalhados.length
+    ? ordenarPorSeveridade(detalhados).map(cardProblemaDetalhado).join('')
+    : ordenarPorSeveridade(resumidos).map(cardProblemaResumido).join('');
 
   const linhasAuditoria = auditoria.map((a) => `<tr>
     <td>${esc(a.categoria)}</td>
@@ -115,6 +146,38 @@ function secaoProblemas(rel, entrada) {
       <table>
         <thead><tr><th>Categoria</th><th>Severidade</th><th>Problema</th><th>Evidência</th></tr></thead>
         <tbody>${linhasAuditoria}</tbody>
+      </table>
+    </div>` : ''}
+  </section>`;
+}
+
+function secaoProximosPassos(entrada) {
+  const det = entrada.detalhamento;
+  if (!det) return '';
+  const passos = det.proximosPassos || [];
+  const wins = det.quickWins || [];
+  if (!passos.length && !wins.length) return '';
+
+  const linhas = [...passos].sort((a, b) => (a.ordem || 99) - (b.ordem || 99)).map((p) => `<tr>
+    <td><strong>${esc(p.ordem)}</strong></td>
+    <td>${esc(p.semana)}</td>
+    <td>${esc(p.acao)}</td>
+    <td>${esc(p.categoria)}</td>
+    <td>${esc(p.dependeDe)}</td>
+    <td>${esc(p.resultadoEsperado)}</td>
+  </tr>`).join('');
+
+  return `<section class="secao">
+    <h2>🚀 Próximos passos — roadmap destrinchado</h2>
+    ${wins.length ? `<div class="card">
+      <h3>⚡ Quick wins (menos de 1 hora cada)</h3>
+      <ul>${wins.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>
+    </div>` : ''}
+    ${linhas ? `<div class="card">
+      <h3>Sequência recomendada de execução</h3>
+      <table>
+        <thead><tr><th>#</th><th>Quando</th><th>Ação</th><th>Categoria</th><th>Depende de</th><th>Resultado esperado</th></tr></thead>
+        <tbody>${linhas}</tbody>
       </table>
     </div>` : ''}
   </section>`;
@@ -451,6 +514,7 @@ function renderizar(entrada) {
     </div>
 
     ${secaoProblemas(rel, entrada)}
+    ${secaoProximosPassos(entrada)}
     ${secaoSEO(rel.seo)}
     ${secaoGEO(rel.geo)}
     ${secaoAEO(rel.aeo)}
