@@ -75,9 +75,10 @@ async function carregarDashboard() {
   $('site-url').textContent = aba?.url ? new URL(aba.url).hostname : 'Página indisponível';
 
   const analisavel = !!aba?.url && /^https?:/.test(aba.url);
-  $('btn-analisar').disabled = !analisavel;
+  await renderHtmlExtra();
+  await atualizarBotaoAnalisar();
   if (!analisavel) {
-    mostrarErro('Esta página não pode ser analisada (apenas http/https).');
+    mostrarErro('Esta aba não é analisável (apenas http/https) — mas você pode adicionar o HTML do site abaixo e analisar a partir dele.');
   }
 
   // Histórico + última análise do domínio atual
@@ -139,6 +140,78 @@ function renderHistorico(historico) {
 }
 
 // ------------------------------------------------------------------
+// HTML extra: páginas coladas/enviadas pelo usuário (html-import.js)
+// ------------------------------------------------------------------
+async function renderHtmlExtra() {
+  const extras = await obterHtmlExtra();
+  $('badge-html-extra').textContent = extras.length ? String(extras.length) : '';
+  const ul = $('lista-html-extra');
+  ul.innerHTML = '';
+  extras.forEach((e, i) => {
+    const li = document.createElement('li');
+    const info = document.createElement('span');
+    info.className = 'info';
+    info.textContent = e.nome;
+    const detalhe = document.createElement('small');
+    detalhe.textContent = `${e.url || 'sem URL'} · ${(e.html.length / 1024).toFixed(0)} KB`;
+    info.appendChild(detalhe);
+    const btn = document.createElement('button');
+    btn.className = 'remover';
+    btn.textContent = '✕';
+    btn.title = 'Remover';
+    btn.addEventListener('click', async () => {
+      const lista = await obterHtmlExtra();
+      lista.splice(i, 1);
+      await salvarHtmlExtra(lista);
+      await renderHtmlExtra();
+      await atualizarBotaoAnalisar();
+    });
+    li.append(info, btn);
+    ul.appendChild(li);
+  });
+}
+
+async function adicionarHtmlExtra(nome, url, html) {
+  if (!html || html.length < 50) return false;
+  const lista = await obterHtmlExtra();
+  if (lista.length >= HTML_EXTRA_MAX) {
+    mostrarErro(`Máximo de ${HTML_EXTRA_MAX} páginas manuais. Remova alguma para adicionar outra.`);
+    return false;
+  }
+  lista.push({ nome, url: url || null, html: html.substring(0, HTML_EXTRA_MAX_CHARS) });
+  await salvarHtmlExtra(lista);
+  await renderHtmlExtra();
+  await atualizarBotaoAnalisar();
+  return true;
+}
+
+async function atualizarBotaoAnalisar() {
+  const analisavel = !!abaAtual?.url && /^https?:/.test(abaAtual.url);
+  const extras = await obterHtmlExtra();
+  // Com HTML manual dá para analisar mesmo sem aba http(s)
+  $('btn-analisar').disabled = !analisavel && extras.length === 0;
+}
+
+$('btn-add-html').addEventListener('click', async () => {
+  const html = $('input-html-texto').value.trim();
+  const url = $('input-html-url').value.trim();
+  if (!html) { $('input-html-texto').focus(); return; }
+  const nome = url ? new URL(url, 'https://x.invalida').pathname || url : `HTML colado ${new Date().toLocaleTimeString('pt-BR')}`;
+  if (await adicionarHtmlExtra(nome, url, html)) {
+    $('input-html-texto').value = '';
+    $('input-html-url').value = '';
+  }
+});
+
+$('input-html-arquivos').addEventListener('change', async (ev) => {
+  for (const arquivo of ev.target.files) {
+    const html = await arquivo.text();
+    await adicionarHtmlExtra(arquivo.name, null, html);
+  }
+  ev.target.value = '';
+});
+
+// ------------------------------------------------------------------
 // Tela 3 — Progresso
 // ------------------------------------------------------------------
 function setProgresso(pct, stepAtivo) {
@@ -173,8 +246,10 @@ async function coletarDadosDaAba(tabId) {
 }
 
 async function analisar(forcar) {
-  if (!abaAtual?.id) return;
   $('erro-dashboard').classList.add('oculta');
+  const extras = await obterHtmlExtra();
+  const analisavel = !!abaAtual?.id && /^https?:/.test(abaAtual.url || '');
+  if (!analisavel && !extras.length) return;
 
   // Confirmação para reuso de cache
   if (!forcar && cacheDisponivel && analiseAtual) {
@@ -186,7 +261,26 @@ async function analisar(forcar) {
   setProgresso(10, 1);
 
   try {
-    const dados = await coletarDadosDaAba(abaAtual.id);
+    let dados;
+    if (analisavel) {
+      dados = await coletarDadosDaAba(abaAtual.id);
+    } else {
+      // Sem aba http(s): o primeiro HTML manual vira a página principal
+      dados = dadosCompletosDeHTML(extras[0].html, extras[0].url || 'https://pagina-local.invalida/');
+      dados.subpaginas = [];
+    }
+
+    // Demais HTMLs manuais entram como subpáginas (acesso extra à análise)
+    const inicio = analisavel ? 0 : 1;
+    const manuais = extras.slice(inicio).map((e) => {
+      try { return resumoSubpaginaDeHTML(e.html, e.url || e.nome); }
+      catch { return null; }
+    }).filter(Boolean);
+    if (manuais.length) {
+      // Manuais primeiro: têm prioridade se a compactação cortar a lista
+      dados.subpaginas = [...manuais, ...(dados.subpaginas || [])];
+      dados.limitacoes = [...(dados.limitacoes || []), `${manuais.length} página(s) adicionada(s) manualmente via HTML pelo usuário`];
+    }
     setProgresso(35, 2);
 
     // Avanço suave da barra enquanto a IA responde

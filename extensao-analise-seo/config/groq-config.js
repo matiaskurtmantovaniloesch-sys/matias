@@ -65,8 +65,9 @@ function compactarDados(dados, nivel) {
   aeo.sameAsLinks = fatia(aeo.sameAsLinks, 6);
   aeo.schemaValidationIssues = fatia(aeo.schemaValidationIssues, nivel >= 2 ? 4 : 10);
 
-  // Subpáginas: resumo por página (nível 2 mantém só as 2 primeiras)
-  d.subpaginas = (fatia(d.subpaginas, nivel >= 2 ? 2 : 5) || []).map((p) => ({
+  // Subpáginas: resumo por página (até 7 — inclui as adicionadas via HTML
+  // manual, que vêm primeiro na lista; nível 2 mantém só as 3 primeiras)
+  d.subpaginas = (fatia(d.subpaginas, nivel >= 2 ? 3 : 7) || []).map((p) => ({
     ...p,
     title: corta(p.title, 80),
     metaDescription: nivel >= 2 ? !!p.metaDescription : corta(p.metaDescription, 120),

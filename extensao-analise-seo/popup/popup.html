@@ -75,6 +75,29 @@
 
     <p id="erro-dashboard" class="erro oculta"></p>
 
+    <details class="html-extra" id="bloco-html-extra">
+      <summary>📋 Adicionar HTML do site <span class="badge" id="badge-html-extra"></span></summary>
+      <p class="texto-secundario">
+        Cole o código-fonte (Ctrl+U na página → copiar) ou envie arquivos .html.
+        Essas páginas entram na análise como acesso extra — útil para áreas logadas
+        ou páginas que a extensão não consegue baixar.
+      </p>
+      <label class="campo">
+        <span>URL da página (opcional, ajuda a identificar)</span>
+        <input type="text" id="input-html-url" placeholder="https://seusite.com.br/pagina">
+      </label>
+      <label class="campo">
+        <span>HTML da página</span>
+        <textarea id="input-html-texto" rows="5" placeholder="<!DOCTYPE html>..."></textarea>
+      </label>
+      <button id="btn-add-html" class="btn btn-secundario">＋ Adicionar HTML colado</button>
+      <label class="campo">
+        <span>Ou envie arquivos .html (múltiplos)</span>
+        <input type="file" id="input-html-arquivos" accept=".html,.htm,text/html" multiple>
+      </label>
+      <ul id="lista-html-extra"></ul>
+    </details>
+
     <div class="historico">
       <h3>Últimas análises</h3>
       <ul id="lista-historico"><li class="texto-secundario">Nenhuma análise ainda.</li></ul>
@@ -135,6 +158,7 @@
   </footer>
 
   <script src="../config/groq-config.js"></script>
+  <script src="html-import.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

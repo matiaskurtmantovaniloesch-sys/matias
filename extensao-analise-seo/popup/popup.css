@@ -150,6 +150,49 @@ body {
 }
 .erro a { color: #fca5a5; }
 
+/* ---------- HTML extra (colar/enviar páginas) ---------- */
+.html-extra {
+  margin-top: 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.html-extra summary {
+  cursor: pointer; font-size: 13px; font-weight: 600;
+  list-style: none; user-select: none;
+}
+.html-extra summary::before { content: '▸ '; color: var(--accent-primary); }
+.html-extra[open] summary::before { content: '▾ '; }
+.html-extra .badge {
+  display: inline-block; min-width: 18px; padding: 1px 7px; margin-left: 6px;
+  background: var(--accent-primary); color: #fff; border-radius: 99px;
+  font-size: 10.5px; font-weight: 700; text-align: center;
+}
+.html-extra .badge:empty { display: none; }
+.html-extra textarea {
+  width: 100%; padding: 9px 11px; resize: vertical;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text-primary); font-size: 11.5px;
+  font-family: Consolas, monospace;
+}
+.html-extra textarea:focus { outline: 2px solid var(--accent-primary); border-color: transparent; }
+.html-extra input[type="file"] { font-size: 11.5px; color: var(--text-secondary); }
+.html-extra .btn { margin: 4px 0 8px; font-size: 12.5px; padding: 9px 12px; }
+#lista-html-extra { list-style: none; margin-top: 8px; }
+#lista-html-extra li {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 6px 8px; margin: 4px 0;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 7px;
+  font-size: 11.5px;
+}
+#lista-html-extra .info { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#lista-html-extra .info small { display: block; color: var(--text-secondary); }
+#lista-html-extra .remover {
+  background: none; border: none; color: var(--danger);
+  cursor: pointer; font-size: 14px; line-height: 1; flex-shrink: 0;
+}
+
 .historico { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 12px; }
 .historico ul { list-style: none; }
 .historico li {
