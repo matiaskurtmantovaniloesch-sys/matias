@@ -73,7 +73,7 @@ function parsearJSONRelatorio(textoBruto) {
 // ------------------------------------------------------------------
 // Chamada à API Groq com timeout, retry e backoff exponencial
 // ------------------------------------------------------------------
-async function chamarGroq(apiKey, prompt, modelo) {
+async function chamarGroq(apiKey, prompt, modelo, maxTokens) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GROQ_CONFIG.timeoutMs);
   try {
@@ -90,7 +90,7 @@ async function chamarGroq(apiKey, prompt, modelo) {
           { role: 'user', content: prompt },
         ],
         temperature: GROQ_CONFIG.temperatura,
-        max_tokens: GROQ_CONFIG.maxTokens,
+        max_tokens: maxTokens,
         response_format: { type: 'json_object' },
       }),
       signal: controller.signal,
@@ -107,6 +107,12 @@ async function chamarGroq(apiKey, prompt, modelo) {
       e.codigo = 'RATE_LIMIT';
       throw e;
     }
+    if (resp.status === 413) {
+      // Tier gratuito: requisição excede o limite de tokens/minuto.
+      const e = new Error('Requisição excede o limite de tokens da Groq.');
+      e.codigo = 'REQUISICAO_GRANDE';
+      throw e;
+    }
     if (!resp.ok) {
       const corpo = await resp.text().catch(() => '');
       const e = new Error(`Erro da API Groq (HTTP ${resp.status}): ${corpo.substring(0, 200)}`);
@@ -121,9 +127,23 @@ async function chamarGroq(apiKey, prompt, modelo) {
   }
 }
 
-async function analisarComRetry(apiKey, prompt) {
+// max_tokens efetivo: o que sobra do orçamento de tokens/minuto após o prompt
+function calcularMaxTokens(prompt) {
+  const sobra = GROQ_CONFIG.orcamentoTPM - estimarTokens(prompt);
+  return Math.max(GROQ_CONFIG.maxTokensPiso, Math.min(GROQ_CONFIG.maxTokensTeto, sobra));
+}
+
+async function analisarComRetry(apiKey, dados) {
   let erroPrincipal = null;   // erro do modelo principal (mais informativo)
   let ultimoErro = null;
+  let nivel = 1;              // compactação dos dados no prompt (2 = ultra)
+
+  // Se mesmo compactado o prompt não deixa espaço para a resposta,
+  // já parte para o nível ultra-compacto.
+  if (estimarTokens(montarPromptGroq(dados, 1)) > GROQ_CONFIG.orcamentoTPM - GROQ_CONFIG.maxTokensPiso) {
+    nivel = 2;
+  }
+
   for (let tentativa = 0; tentativa < GROQ_CONFIG.tentativas; tentativa++) {
     if (tentativa > 0) {
       await new Promise((r) => setTimeout(r, GROQ_CONFIG.backoffBaseMs * Math.pow(2, tentativa - 1)));
@@ -131,13 +151,17 @@ async function analisarComRetry(apiKey, prompt) {
     // Última tentativa usa o modelo de fallback
     const ehFallback = tentativa === GROQ_CONFIG.tentativas - 1;
     const modelo = ehFallback ? GROQ_CONFIG.modeloFallback : GROQ_CONFIG.modelo;
+    const prompt = montarPromptGroq(dados, nivel);
     try {
-      const conteudo = await chamarGroq(apiKey, prompt, modelo);
+      const conteudo = await chamarGroq(apiKey, prompt, modelo, calcularMaxTokens(prompt));
       const relatorio = parsearJSONRelatorio(conteudo);
       if (relatorio) return relatorio;
       ultimoErro = new Error('A IA retornou um JSON inválido.');
     } catch (e) {
       if (e.fatal) throw e;
+      // Prompt grande demais, ou resposta truncada por falta de espaço
+      // (json_validate_failed): compactar o prompt libera tokens de saída.
+      if (e.codigo === 'REQUISICAO_GRANDE' || /json_validate/i.test(e.message)) nivel = 2;
       ultimoErro = e.name === 'AbortError' ? new Error('Timeout na chamada à API Groq.') : e;
     }
     if (!ehFallback) erroPrincipal = ultimoErro;
@@ -178,8 +202,7 @@ async function processarAnalise(msg) {
     throw e;
   }
 
-  const prompt = montarPromptGroq(dados);
-  const relatorio = await enfileirar(() => analisarComRetry(apiKey, prompt));
+  const relatorio = await enfileirar(() => analisarComRetry(apiKey, dados));
 
   // Garante campos básicos mesmo se a IA omitir
   relatorio.urlAnalisada = relatorio.urlAnalisada || dados.seoData.url;

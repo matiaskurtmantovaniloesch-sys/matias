@@ -8,9 +8,12 @@ const GROQ_CONFIG = {
   modelo: 'llama-3.3-70b-versatile',
   modeloFallback: 'llama-3.1-8b-instant',
   temperatura: 0.3,
-  // O relatório completo é longo; com limite baixo a resposta é truncada e
-  // o modo json_object da Groq rejeita com HTTP 400 (json_validate_failed).
-  maxTokens: 16384,
+  // O tier gratuito da Groq limita a 12.000 tokens/minuto (prompt + resposta
+  // contam juntos). O orçamento abaixo deixa margem; o max_tokens efetivo é
+  // calculado por requisição: orcamentoTPM - tokens estimados do prompt.
+  orcamentoTPM: 11000,
+  maxTokensTeto: 8000,     // teto da resposta mesmo com prompt pequeno
+  maxTokensPiso: 3000,     // mínimo p/ relatório não truncar (json_validate_failed)
   timeoutMs: 60000,
   tentativas: 3,           // 1 chamada + 2 retries com backoff
   backoffBaseMs: 2000,
@@ -18,6 +21,52 @@ const GROQ_CONFIG = {
   cacheHoras: 24,
   historicoMax: 10,
 };
+
+// Estimativa grosseira de tokens para texto pt-BR/JSON (~3,3 chars/token)
+function estimarTokens(texto) {
+  return Math.ceil((texto || '').length / 3.3);
+}
+
+// ------------------------------------------------------------------
+// Compactação dos dados coletados antes de montar o prompt.
+// nivel 1: remove campos pesados de baixo valor analítico.
+// nivel 2 (ultra): usado após HTTP 413 — mantém apenas o essencial.
+// ------------------------------------------------------------------
+function compactarDados(dados, nivel) {
+  const d = JSON.parse(JSON.stringify(dados || {}));
+  const seo = d.seoData || {};
+  const geo = d.geoData || {};
+  const aeo = d.aeoData || {};
+  const fe = d.frontendData || {};
+  const corta = (s, n) => (typeof s === 'string' ? s.substring(0, n) : s);
+  const fatia = (a, n) => (Array.isArray(a) ? a.slice(0, n) : a);
+
+  // Sempre: o HTML bruto e campos de formulário pesam muito e a IA já
+  // recebe os mesmos sinais de forma estruturada.
+  delete fe.pageHTML;
+  fe.formFields = fatia(fe.formFields, nivel >= 2 ? 0 : 8);
+  fe.footerContent = corta(fe.footerContent, nivel >= 2 ? 0 : 200);
+  fe.ctaButtons = fatia(fe.ctaButtons, nivel >= 2 ? 5 : 10);
+  fe.navItems = fatia(fe.navItems, nivel >= 2 ? 6 : 12);
+  fe.fontFamilies = fatia(fe.fontFamilies, 4);
+
+  seo.textContent = corta(seo.textContent, nivel >= 2 ? 600 : 1500);
+  seo.schemaRaw = corta(seo.schemaRaw, nivel >= 2 ? 0 : 600);
+  seo.imagesAltList = (fatia(seo.imagesAltList, nivel >= 2 ? 0 : 6) || [])
+    .map((i) => ({ src: (i.src || '').slice(-60), alt: corta(i.alt, 60) }));
+  ['h2', 'h3', 'h4', 'h5', 'h6'].forEach((h) => { seo[h] = fatia(seo[h], nivel >= 2 ? 4 : 10); });
+  seo.hreflangTags = fatia(seo.hreflangTags, 6);
+
+  geo.localBusinessSchema = corta(geo.localBusinessSchema, nivel >= 2 ? 0 : 400);
+
+  aeo.faqContent = fatia(aeo.faqContent, nivel >= 2 ? 4 : 10);
+  aeo.questionElements = fatia(aeo.questionElements, nivel >= 2 ? 4 : 10);
+  aeo.breadcrumbSchema = corta(aeo.breadcrumbSchema, nivel >= 2 ? 0 : 300);
+  aeo.sameAsLinks = fatia(aeo.sameAsLinks, 6);
+  aeo.schemaValidationIssues = fatia(aeo.schemaValidationIssues, nivel >= 2 ? 4 : 10);
+
+  return d;
+}
 
 // Obfuscação simples da API key antes de gravar no chrome.storage.local.
 // Atenção: NÃO é criptografia forte — uma extensão client-side não tem
@@ -130,8 +179,9 @@ const FORMATO_RELATORIO = `{
   "kpis": { "kpisParaMonitorar": [], "ferramentasRecomendadas": [], "metasRealistasSugeridasEm90Dias": [] }
 }`;
 
-function montarPromptGroq(dados) {
-  const { seoData = {}, geoData = {}, aeoData = {}, frontendData = {}, limitacoes = [] } = dados;
+function montarPromptGroq(dados, nivel = 1) {
+  const compacto = compactarDados(dados, nivel);
+  const { seoData = {}, geoData = {}, aeoData = {}, frontendData = {}, limitacoes = [] } = compacto;
   return `
 Você é um especialista sênior em SEO, GEO (Generative Engine Optimization), AEO (Answer Engine Optimization), UX/UI e Marketing Digital.
 Analise profundamente os dados técnicos do site abaixo e produza um relatório COMPLETO, DETALHADO e PROFISSIONAL.
@@ -143,16 +193,16 @@ Data atual: ${new Date().toLocaleDateString('pt-BR')}
 ${limitacoes.length ? `Limitações da coleta (informe no relatório): ${limitacoes.join('; ')}` : ''}
 
 ### DADOS SEO:
-${JSON.stringify(seoData, null, 2)}
+${JSON.stringify(seoData)}
 
 ### DADOS GEO:
-${JSON.stringify(geoData, null, 2)}
+${JSON.stringify(geoData)}
 
 ### DADOS AEO:
-${JSON.stringify(aeoData, null, 2)}
+${JSON.stringify(aeoData)}
 
 ### DADOS FRONTEND:
-${JSON.stringify(frontendData, null, 2)}
+${JSON.stringify(frontendData)}
 
 ---
 
@@ -176,6 +226,8 @@ IMPORTANTE:
 if (typeof globalThis !== 'undefined') {
   globalThis.GROQ_CONFIG = GROQ_CONFIG;
   globalThis.montarPromptGroq = montarPromptGroq;
+  globalThis.estimarTokens = estimarTokens;
+  globalThis.compactarDados = compactarDados;
   globalThis.ofuscarKey = ofuscarKey;
   globalThis.desofuscarKey = desofuscarKey;
 }
