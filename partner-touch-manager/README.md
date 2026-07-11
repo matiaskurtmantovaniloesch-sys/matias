@@ -26,6 +26,21 @@ Next.js (App Router) + TypeScript · Tailwind CSS + shadcn/ui · Recharts ·
 
 ---
 
+## Quero só ver funcionando (modo demonstração)
+
+Sem nenhuma configuração do Google, a ferramenta abre em **modo demonstração**,
+com dados de exemplo em memória (um aviso amarelo fica visível no topo). Basta:
+
+```bash
+npm install
+npm run dev
+```
+
+e abrir **http://localhost:3000**. Tudo funciona — inclusive criar parcerias e
+registrar touches — mas os dados somem ao reiniciar o servidor. Quando quiser
+conectar a planilha de verdade, siga o setup abaixo; assim que o `.env.local`
+estiver preenchido, o modo demonstração desliga sozinho.
+
 ## Setup do zero (não precisa ser técnico — siga na ordem)
 
 ### 1. Crie a planilha

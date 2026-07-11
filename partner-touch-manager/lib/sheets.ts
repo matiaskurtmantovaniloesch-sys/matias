@@ -13,55 +13,25 @@
 
 import { google, sheets_v4 } from "googleapis";
 import { JWT } from "google-auth-library";
+import { SHEET_TABS, type TabName } from "./sheets-tabs";
+import { demoDb } from "./demo-data";
+
+export { SHEET_TABS, type TabName };
 
 // ------------------------------------------------------------
-// Definição das abas e seus cabeçalhos (linha 1 de cada aba).
-// A ordem aqui é a ordem canônica usada pelo bootstrap; na leitura
-// usamos o cabeçalho REAL da planilha como chave, então reordenar
-// colunas na planilha não quebra a ferramenta.
+// Modo demonstração: enquanto NENHUMA credencial do Google estiver
+// configurada, a ferramenta roda com dados de exemplo em memória
+// (banner visível na UI). Preencheu o .env.local → planilha real.
 // ------------------------------------------------------------
 
-export const SHEET_TABS = {
-  Parcerias: [
-    "id",
-    "nome",
-    "tipo",
-    "status",
-    "responsavel",
-    "data_inicio",
-    "health",
-    "ultima_interacao",
-    "proximo_followup",
-    "notas",
-  ],
-  Contatos: [
-    "id",
-    "parceria_id",
-    "nome",
-    "cargo",
-    "email",
-    "telefone",
-    "linkedin",
-    "origem",
-    "decisor",
-    "notas",
-  ],
-  Touches: [
-    "id",
-    "parceria_id",
-    "contato_id",
-    "data",
-    "canal",
-    "tipo",
-    "resumo",
-    "sentimento",
-    "proxima_acao",
-    "data_proxima_acao",
-    "responsavel",
-  ],
-} as const;
-
-export type TabName = keyof typeof SHEET_TABS;
+export function isDemoMode(): boolean {
+  if (process.env.DEMO_MODE === "1") return true;
+  return (
+    !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL &&
+    !process.env.GOOGLE_PRIVATE_KEY &&
+    !process.env.GOOGLE_SHEET_ID
+  );
+}
 
 // ------------------------------------------------------------
 // Erros amigáveis — mostrados diretamente na UI.
@@ -158,32 +128,37 @@ export interface SheetData {
   rowNumbers: number[];
 }
 
+function parseValues(tab: TabName, values: string[][]): SheetData {
+  if (values.length === 0) {
+    // Aba existe mas está vazia (sem cabeçalho) — rode `npm run init-sheet`.
+    return { header: [...SHEET_TABS[tab]], rows: [], rowNumbers: [] };
+  }
+  const header = values[0].map((h) => String(h).trim());
+  const rows: Record<string, string>[] = [];
+  const rowNumbers: number[] = [];
+  for (let i = 1; i < values.length; i++) {
+    const raw = values[i];
+    // Ignora linhas totalmente vazias (sobras de deleções manuais).
+    if (!raw || raw.every((c) => String(c ?? "").trim() === "")) continue;
+    const obj: Record<string, string> = {};
+    header.forEach((col, j) => {
+      obj[col] = String(raw[j] ?? "").trim();
+    });
+    rows.push(obj);
+    rowNumbers.push(i + 1); // 1-based na planilha
+  }
+  return { header, rows, rowNumbers };
+}
+
 export async function readSheet(tab: TabName): Promise<SheetData> {
+  if (isDemoMode()) return parseValues(tab, demoDb()[tab]);
   try {
     const res = await getClient().spreadsheets.values.get({
       spreadsheetId: getSheetId(),
       range: tab,
     });
     const values = (res.data.values ?? []) as string[][];
-    if (values.length === 0) {
-      // Aba existe mas está vazia (sem cabeçalho) — rode `npm run init-sheet`.
-      return { header: [...SHEET_TABS[tab]], rows: [], rowNumbers: [] };
-    }
-    const header = values[0].map((h) => String(h).trim());
-    const rows: Record<string, string>[] = [];
-    const rowNumbers: number[] = [];
-    for (let i = 1; i < values.length; i++) {
-      const raw = values[i];
-      // Ignora linhas totalmente vazias (sobras de deleções manuais).
-      if (!raw || raw.every((c) => String(c ?? "").trim() === "")) continue;
-      const obj: Record<string, string> = {};
-      header.forEach((col, j) => {
-        obj[col] = String(raw[j] ?? "").trim();
-      });
-      rows.push(obj);
-      rowNumbers.push(i + 1); // 1-based na planilha
-    }
-    return { header, rows, rowNumbers };
+    return parseValues(tab, values);
   } catch (err) {
     if (err instanceof SheetsError) throw err;
     throw toFriendlyError(err);
@@ -213,6 +188,10 @@ export async function appendRow(
   tab: TabName,
   record: Record<string, string>
 ): Promise<void> {
+  if (isDemoMode()) {
+    demoDb()[tab].push(SHEET_TABS[tab].map((col) => record[col] ?? ""));
+    return;
+  }
   try {
     // Lê só o cabeçalho para respeitar a ordem real das colunas na planilha.
     const headerRes = await getClient().spreadsheets.values.get({
@@ -260,6 +239,10 @@ export async function updateRowById(
 
   const rowNumber = rowNumbers[idx];
   const values = header.map((col) => merged[col] ?? "");
+  if (isDemoMode()) {
+    demoDb()[tab][rowNumber - 1] = values;
+    return merged;
+  }
   const range = `${tab}!A${rowNumber}:${colLetter(header.length - 1)}${rowNumber}`;
 
   try {
@@ -311,6 +294,10 @@ export async function deleteRowById(tab: TabName, id: string): Promise<boolean> 
   if (idx === -1) return false;
 
   const rowNumber = rowNumbers[idx]; // 1-based
+  if (isDemoMode()) {
+    demoDb()[tab].splice(rowNumber - 1, 1);
+    return true;
+  }
   try {
     const gid = await getTabGid(tab);
     await getClient().spreadsheets.batchUpdate({
@@ -343,6 +330,12 @@ export async function deleteRowById(tab: TabName, id: string): Promise<boolean> 
 // ------------------------------------------------------------
 
 export async function ensureSheetStructure(): Promise<string[]> {
+  if (isDemoMode()) {
+    throw new SheetsError(
+      "Modo demonstração ativo: configure as credenciais do Google no .env.local " +
+        "(ver README) antes de rodar o init-sheet."
+    );
+  }
   const actions: string[] = [];
   try {
     const client = getClient();
